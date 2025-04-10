@@ -8,6 +8,7 @@ import re
 from collections import defaultdict
 import pytz
 from datetime import datetime, timedelta
+from google_calendar import upload_to_google_calendars
 
 
 sbp_constants = {
@@ -82,7 +83,9 @@ def getEventsForDate(page, date):
         locations=["Seattle Poplar", "Seattle University District", "Seattle Fremont"],
     )
     page.goto(url, timeout=3000)
+    print("Navigating to " + date)
     page.wait_for_selector("td:has-text('Seattle Poplar')")
+    print("Page loaded")
 
     #  Select all the rows inside the table
     rows = page.query_selector_all("table.MuiTable-root tr.MuiTableRow-root")
@@ -98,78 +101,34 @@ def getEventsForDate(page, date):
     return events
 
 
-def generate_ics_per_location(
-    events_by_date, output_dir="ics_output", timezone="America/Los_Angeles"
-):
-    os.makedirs(output_dir, exist_ok=True)
-    local_tz = pytz.timezone(timezone)
-
-    # Group events by location
-    location_events = defaultdict(list)
-
-    for date_str, events in events_by_date.items():
-        for event in events:
-            start_dt = datetime.strptime(
-                f"{date_str} {event['startTime']}", "%Y-%m-%d %H:%M"
-            )
-            end_dt = datetime.strptime(
-                f"{date_str} {event['endTime']}", "%Y-%m-%d %H:%M"
-            )
-
-            event_copy = event.copy()
-            event_copy["begin"] = local_tz.localize(start_dt)
-            event_copy["end"] = local_tz.localize(end_dt)
-
-            location_events[event["eventLocation"]].append(event_copy)
-
-    # Create one calendar per location
-    for location, events in location_events.items():
-        cal = Calendar()
-        for e_data in events:
-            e = Event()
-            e.name = e_data["eventName"]
-            e.begin = e_data["begin"]
-            e.end = e_data["end"]
-            e.location = e_data["eventLocation"]
-            e.description = f"Available Spots: {e_data['availableSpots']}"
-            cal.events.add(e)
-
-        safe_location = location.lower().replace(" ", "_")
-        output_path = os.path.join(output_dir, f"{safe_location}.ics")
-
-        with open(output_path, "w") as f:
-            f.writelines(cal)
-
-        print(f"Written: {output_path}")
-
-
 def scrape_with_playwright():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False)
+        print("Opening browser")
         page = browser.new_page()
         page.goto(base_url, timeout=3000)
-        # page.wait_for_selector(".event")  # Wait for content to load
 
         # Select default location and save
         page.locator('p:has-text("Seattle Poplar")').click()
         page.locator('button:has-text("Save")').click()
+        print("Location selected")
 
         today = datetime.today()
         all_events = {}
 
-        for i in range(1, 3):
+        # Including today
+        days_to_load = 5
+
+        for i in range(days_to_load):
             date = today + timedelta(days=i)
             date_str = date.strftime("%Y-%m-%d")
             events = getEventsForDate(page, date_str)
-            all_events[date_str] = (
-                events  # or store in a dict if you want to group by day
-            )
+            all_events[date_str] = events
 
-        generate_ics_per_location(all_events)
+        print("Starting calendar upload")
+        upload_to_google_calendars(all_events)
 
-        page.wait_for_timeout(1000 * 1800)
-
-        # browser.close()
+        browser.close()
 
 
 if __name__ == "__main__":
