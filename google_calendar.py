@@ -9,13 +9,13 @@ from collections import defaultdict
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 TIMEZONE = "America/Los_Angeles"
 CALENDAR_PREFIX = "SBP –"  # em dash for pretty titles
-credential_file = "/Users/tdavidi/Documents/code/secrets/credential.json"
-token_file = "/Users/tdavidi/Documents/code/secrets/token.json"
+credential_file = "/Users/tdavidi/Documents/code/sbp-calendar/secrets/credential.json"
+token_file = "/Users/tdavidi/Documents/code/sbp-calendar/secrets/token.json"
 
 
 def get_calendar_service():
     creds = None
-    if os.path.exists("token.json"):
+    if os.path.exists(token_file):
         creds = Credentials.from_authorized_user_file(token_file, SCOPES)
     if not creds or not creds.valid:
         flow = InstalledAppFlow.from_client_secrets_file(credential_file, SCOPES)

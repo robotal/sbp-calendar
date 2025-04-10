@@ -103,14 +103,27 @@ def getEventsForDate(page, date):
 
 def scrape_with_playwright():
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
+        browser = p.chromium.launch(headless=True, channel="chromium")
+
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            viewport={"width": 1280, "height": 800},
+            device_scale_factor=1,
+            is_mobile=False,
+            has_touch=False,
+        )
+
         print("Opening browser")
-        page = browser.new_page()
-        page.goto(base_url, timeout=3000)
+        page = context.new_page()
+        page.goto(base_url, timeout=5000)
 
         # Select default location and save
-        page.locator('p:has-text("Seattle Poplar")').click()
-        page.locator('button:has-text("Save")').click()
+        poplarButton = page.locator('p:has-text("Seattle Poplar")')
+        poplarButton.wait_for(timeout=3000)
+        poplarButton.click()
+        saveButtom = page.locator('button:has-text("Save")')
+        saveButtom.wait_for(timeout=3000)
+        saveButtom.click()
         print("Location selected")
 
         today = datetime.today()
