@@ -1,5 +1,5 @@
 # gym_scraper.py
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, Page
 from urllib.parse import urlencode, quote
 from ics import Calendar, Event
 from datetime import datetime
@@ -8,7 +8,7 @@ import re
 from collections import defaultdict
 import pytz
 from datetime import datetime, timedelta
-from google_calendar import upload_to_google_calendars
+from google_calendar import upload_to_google_calendars, upload_cold_plunges
 
 
 sbp_constants = {
@@ -18,7 +18,13 @@ sbp_constants = {
         "Seattle Upper Walls": 3,
         "Seattle University District": 4,
     },
-    "categories": {"Events": 2, "Climbing Classes": 4, "Yoga": 5, "Fitness": 6},
+    "categories": {
+        "Events": 2,
+        "Climbing Classes": 4,
+        "Yoga": 5,
+        "Fitness": 6,
+        "Cold Plunge": 15,
+    },
 }
 
 base_url = "https://boulderingproject.portal.approach.app/schedule/embed"
@@ -51,10 +57,15 @@ def create_url(date, categories, locations):
 # Rows looks like this. First element is a picture
 # ['', '6:15 AM – 7:15 AM\n1 hour', 'Power Flow w/ Emma', 'Seattle Poplar', '4 Pricing Options Available\n35/36 left']
 def parse_row(row):
-    # Skip the picture/empty field (row[0])
-    time_range = row[1].split("–")
-    start_str = time_range[0].strip()
-    end_str = time_range[1].split("\n")[0].strip() if len(time_range) > 1 else None
+    # row[1] = '9:15 AM – 9:30 AM15 minutes'
+    time_range = row[1].split("\n")[0]  # fallback
+    match = re.match(r"([\d: ]+[APM]+)\s+–\s+([\d: ]+[APM]+)", row[1])
+    if match:
+        start_str, end_str = match.groups()
+    else:
+        # fallback if no match, try to split
+        time_range = row[1].split("minutes")[0].strip()
+        start_str, end_str = [s.strip() for s in time_range.split("–")]
 
     # Parse times into 24-hour format (optional)
     start_time = datetime.strptime(start_str, "%I:%M %p").strftime("%H:%M")
@@ -84,7 +95,9 @@ def getEventsForDate(page, date):
     )
     page.goto(url, timeout=3000)
     print("Navigating to " + date)
-    page.wait_for_selector("td:has-text('Seattle Poplar')")
+    page.wait_for_selector(
+        "td:has-text('Seattle'), p:has-text('Try adjusting your search')"
+    )
     print("Page loaded")
 
     #  Select all the rows inside the table
@@ -97,6 +110,63 @@ def getEventsForDate(page, date):
         values = [cell.inner_text().strip() for cell in cells]
         parsedData = parse_row(values)
         events.append(parsedData)
+
+    return events
+
+
+def getColdPlungeOpeningsForDate(page: Page, date):
+    url = create_url(
+        date,
+        categories=["Cold Plunge"],
+        locations=["Seattle University District"],
+    )
+    page.goto(url, timeout=3000)
+    print("Navigating to cold plunges on " + date)
+    page.wait_for_selector(
+        "td:has-text('Seattle University District'), p:has-text('Try adjusting your search')"
+    )
+    print("Page loaded")
+
+    #  Select all the rows inside the table
+    rows = page.query_selector_all("table.MuiTable-root tr.MuiTableRow-root")
+
+    events = []
+
+    rows = page.query_selector_all("table.MuiTable-root tr.MuiTableRow-root")
+    i = 0
+
+    while i < len(rows):
+        # Re-fetch the rows each iteration since the DOM might change after go_back
+        rows = page.query_selector_all("table.MuiTable-root tr.MuiTableRow-root")
+        row = rows[i]
+
+        try:
+            cells = row.query_selector_all("td")
+            values = [cell.inner_text().strip() for cell in cells]
+
+            parsedData = parse_row(values)
+
+            if parsedData["availableSpots"] is not None:
+                print(f"Clicking on Cold plunge at {parsedData['startTime']}")
+                # Click row and capture URL
+                with page.expect_navigation():
+                    row.click()
+                page.wait_for_selector("h1:has-text('Cold Plunge Reservation')")
+                event_url = page.url
+
+                # Go back and wait for page to reload
+                page.go_back()
+                page.wait_for_selector(
+                    "td:has-text('Seattle University District'), p:has-text('Try adjusting your search')"
+                )
+
+                # Attach URL and store
+                parsedData["url"] = event_url
+                events.append(parsedData)
+        except Exception as e:
+            print(f"Skipping row {i} due to error: {e}")
+
+        i += 1
 
     return events
 
@@ -128,9 +198,10 @@ def scrape_with_playwright():
 
         today = datetime.today()
         all_events = {}
+        all_cold_plunges = {}
 
         # Including today
-        days_to_load = 5
+        days_to_load = 6
 
         for i in range(days_to_load):
             date = today + timedelta(days=i)
@@ -138,8 +209,15 @@ def scrape_with_playwright():
             events = getEventsForDate(page, date_str)
             all_events[date_str] = events
 
+            cold_plunges = getColdPlungeOpeningsForDate(page, date_str)
+            all_cold_plunges[date_str] = cold_plunges
+
         print("Starting calendar upload")
         upload_to_google_calendars(all_events)
+        # print(all_cold_plunges)
+        upload_cold_plunges(all_cold_plunges)
+
+        # page.wait_for_timeout(1000 * 1800)
 
         browser.close()
 

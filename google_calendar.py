@@ -8,25 +8,36 @@ from collections import defaultdict
 
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 TIMEZONE = "America/Los_Angeles"
-CALENDAR_PREFIX = "SBP –"  # em dash for pretty titles
+CALENDAR_EVENT_PREFIX = "SBP –"  # em dash for pretty titles
+CALENDAR_COLD_PLUNGE_PREFIX = "SBP Cold Plunge –"  # em dash for pretty titles
 credential_file = "/Users/tdavidi/Documents/code/sbp-calendar/secrets/credential.json"
 token_file = "/Users/tdavidi/Documents/code/sbp-calendar/secrets/token.json"
 
 
 def get_calendar_service():
     creds = None
+
+    # Check if token.json exists
     if os.path.exists(token_file):
         creds = Credentials.from_authorized_user_file(token_file, SCOPES)
+
+    # If there are no (valid) credentials, let the user log in
     if not creds or not creds.valid:
-        flow = InstalledAppFlow.from_client_secrets_file(credential_file, SCOPES)
-        creds = flow.run_local_server(port=0)
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())  # refresh the token if expired
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(credential_file, SCOPES)
+            creds = flow.run_local_server(port=0)
+
+        # Save credentials for the next run
         with open(token_file, "w") as token:
             token.write(creds.to_json())
+
     return build("calendar", "v3", credentials=creds)
 
 
-def get_or_create_calendar(service, location_name):
-    calendar_summary = f"{CALENDAR_PREFIX} {location_name}"
+def get_or_create_calendar(service, location_name, prefix):
+    calendar_summary = f"{prefix} {location_name}"
     existing = service.calendarList().list().execute()
     for c in existing.get("items", []):
         if c["summary"] == calendar_summary:
@@ -73,7 +84,8 @@ def upload_events(service, calendar_id, events):
         event_body = {
             "summary": event["eventName"],
             "location": event["eventLocation"],
-            "description": f"Available Spots: {event['availableSpots']}",
+            "description": f"""Available Spots: {event['availableSpots']}"""
+            + (f"\nRegister here: {event['url']}" if event.get("url") else ""),
             "start": {
                 "dateTime": start_dt.isoformat(),
                 "timeZone": TIMEZONE,
@@ -100,7 +112,7 @@ def upload_to_google_calendars(events_by_date):
     public_links = {}
 
     for location, events in location_events.items():
-        cal_id = get_or_create_calendar(service, location)
+        cal_id = get_or_create_calendar(service, location, CALENDAR_EVENT_PREFIX)
         clear_calendar(service, cal_id)
         upload_events(service, cal_id, events)
         make_calendar_public(service, cal_id)
@@ -108,5 +120,30 @@ def upload_to_google_calendars(events_by_date):
         public_url = f"https://calendar.google.com/calendar/embed?src={cal_id}"
         public_links[location] = public_url
         print(f"✅ Calendar for {location}: {public_url}")
+
+    return public_links
+
+
+def upload_cold_plunges(events_by_date):
+    service = get_calendar_service()
+
+    # Flatten and group by location
+    location_events = defaultdict(list)
+    for date_str, events in events_by_date.items():
+        for event in events:
+            event["date"] = date_str  # add date into event dict
+            location_events[event["eventLocation"]].append(event)
+
+    public_links = {}
+
+    for location, events in location_events.items():
+        cal_id = get_or_create_calendar(service, location, CALENDAR_COLD_PLUNGE_PREFIX)
+        clear_calendar(service, cal_id)
+        upload_events(service, cal_id, events)
+        make_calendar_public(service, cal_id)
+
+        public_url = f"https://calendar.google.com/calendar/embed?src={cal_id}"
+        public_links[location] = public_url
+        print(f"✅ Cold Plunge Calendar for {location}: {public_url}")
 
     return public_links
