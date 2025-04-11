@@ -10,7 +10,7 @@ SCOPES = ["https://www.googleapis.com/auth/calendar"]
 TIMEZONE = "America/Los_Angeles"
 CALENDAR_EVENT_PREFIX = "SBP –"  # em dash for pretty titles
 CALENDAR_COLD_PLUNGE_PREFIX = "SBP Cold Plunge –"  # em dash for pretty titles
-credential_file = "/Users/tdavidi/Documents/code/sbp-calendar/secrets/credential.json"
+CREDENTIAL_FILE = "secrets/credential.json"
 TOKEN_FILE = "secrets/token.json"
 
 

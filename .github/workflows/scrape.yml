@@ -21,16 +21,17 @@ jobs:
           pip install -r requirements.txt
           playwright install
 
-      - name: Create credential.json and token.json
+      - name: Create secrets/credential.json and secrets/token.json
         run: |
-          echo '${{ secrets.CREDENTIAL_JSON }}' > credential.json
-          echo '${{ secrets.TOKEN_JSON }}' > token.json
+          mkdir secrets  
+          echo '${{ secrets.CREDENTIAL_JSON }}' > secrets/credential.json
+          echo '${{ secrets.TOKEN_JSON }}' > secrets/token.json
 
       - name: Run scraper
         id: run_scraper
         run: |
           python scripts/scrape.py
-          if grep -q '"refresh_token"' token.json; then
+          if grep -q '"refresh_token"' secrets/token.json; then
             echo "Token refreshed"
             echo "refreshed=true" >> "$GITHUB_OUTPUT"
           else
@@ -38,10 +39,10 @@ jobs:
             exit 1
           fi
 
-      - name: Update GCAL_TOKEN_JSON secret
+      - name: Update TOKEN_JSON secret
         if: steps.run_scraper.outputs.refreshed == 'true'
         uses: peter-evans/create-or-update-secret@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          secret-name: GCAL_TOKEN_JSON
+          secret-name: TOKEN_JSON
           secret-value: ${{ steps.run_scraper.outputs.refreshed_token }}

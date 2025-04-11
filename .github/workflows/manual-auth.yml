@@ -18,6 +18,11 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Create credential.json and token.json
+        run: |
+          mkdir secrets
+          echo '${{ secrets.CREDENTIAL_JSON }}' > secrets/credential.json
+
       - name: Run Auth Script
         run: python scripts/manual_auth.py
         env:
