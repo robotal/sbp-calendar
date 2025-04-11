@@ -65,26 +65,12 @@ def make_calendar_public(service, calendar_id):
         print(f"Warning: couldn't make calendar public: {e}")
 
 
-def clear_calendar(service, calendar_id):
+def sync_calendar_events(service, calendar_id, events):
     now = datetime.datetime.utcnow().isoformat() + "Z"
-    page_token = None
-    while True:
-        events = (
-            service.events()
-            .list(calendarId=calendar_id, pageToken=page_token, timeMin=now)
-            .execute()
-        )
-        for event in events.get("items", []):
-            service.events().delete(
-                calendarId=calendar_id, eventId=event["id"]
-            ).execute()
-        page_token = events.get("nextPageToken")
-        if not page_token:
-            break
-
-
-def upload_events(service, calendar_id, events):
     tz = pytz.timezone(TIMEZONE)
+
+    # Convert new events into a comparable key set
+    new_event_map = {}
     for event in events:
         start_dt = tz.localize(
             datetime.datetime.strptime(
@@ -96,23 +82,49 @@ def upload_events(service, calendar_id, events):
                 f"{event['date']} {event['endTime']}", "%Y-%m-%d %H:%M"
             )
         )
-
-        event_body = {
+        key = (event["eventName"], start_dt.isoformat(), end_dt.isoformat())
+        new_event_map[key] = {
             "summary": event["eventName"],
             "location": event["eventLocation"],
             "description": f"""Available Spots: {event['availableSpots']}"""
             + (f"\nRegister here: {event['url']}" if event.get("url") else ""),
-            "start": {
-                "dateTime": start_dt.isoformat(),
-                "timeZone": TIMEZONE,
-            },
-            "end": {
-                "dateTime": end_dt.isoformat(),
-                "timeZone": TIMEZONE,
-            },
+            "start": {"dateTime": start_dt.isoformat(), "timeZone": TIMEZONE},
+            "end": {"dateTime": end_dt.isoformat(), "timeZone": TIMEZONE},
         }
 
-        service.events().insert(calendarId=calendar_id, body=event_body).execute()
+    # Fetch existing events
+    existing_event_keys = {}
+    page_token = None
+    while True:
+        result = (
+            service.events()
+            .list(calendarId=calendar_id, timeMin=now, pageToken=page_token)
+            .execute()
+        )
+        for item in result.get("items", []):
+            key = (
+                item.get("summary"),
+                item.get("start", {}).get("dateTime"),
+                item.get("end", {}).get("dateTime"),
+            )
+            existing_event_keys[key] = item.get("id")
+        page_token = result.get("nextPageToken")
+        if not page_token:
+            break
+
+    # Events to delete
+    to_delete = set(existing_event_keys) - set(new_event_map)
+    for key in to_delete:
+        service.events().delete(
+            calendarId=calendar_id, eventId=existing_event_keys[key]
+        ).execute()
+
+    # Events to insert
+    to_add = set(new_event_map) - set(existing_event_keys)
+    for key in to_add:
+        service.events().insert(
+            calendarId=calendar_id, body=new_event_map[key]
+        ).execute()
 
 
 def upload_to_google_calendars(events_by_date):
@@ -129,8 +141,7 @@ def upload_to_google_calendars(events_by_date):
 
     for location, events in location_events.items():
         cal_id = get_or_create_calendar(service, location, CALENDAR_EVENT_PREFIX)
-        clear_calendar(service, cal_id)
-        upload_events(service, cal_id, events)
+        sync_calendar_events(service, cal_id, events)
         make_calendar_public(service, cal_id)
 
         public_url = f"https://calendar.google.com/calendar/embed?src={cal_id}"
@@ -154,8 +165,7 @@ def upload_cold_plunges(events_by_date):
 
     for location, events in location_events.items():
         cal_id = get_or_create_calendar(service, location, CALENDAR_COLD_PLUNGE_PREFIX)
-        clear_calendar(service, cal_id)
-        upload_events(service, cal_id, events)
+        sync_calendar_events(service, cal_id, events)
         make_calendar_public(service, cal_id)
 
         public_url = f"https://calendar.google.com/calendar/embed?src={cal_id}"
