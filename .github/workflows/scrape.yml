@@ -1,0 +1,47 @@
+name: Run Scraper
+
+on:
+  schedule:
+    - cron: "0 12 * * *" # Daily at noon UTC
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install
+
+      - name: Create credential.json and token.json
+        run: |
+          echo '${{ secrets.CREDENTIAL_JSON }}' > credential.json
+          echo '${{ secrets.TOKEN_JSON }}' > token.json
+
+      - name: Run scraper
+        id: run_scraper
+        run: |
+          python scripts/scrape.py
+          if grep -q '"refresh_token"' token.json; then
+            echo "Token refreshed"
+            echo "refreshed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No refresh_token present. Login required."
+            exit 1
+          fi
+
+      - name: Update GCAL_TOKEN_JSON secret
+        if: steps.run_scraper.outputs.refreshed == 'true'
+        uses: peter-evans/create-or-update-secret@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          secret-name: GCAL_TOKEN_JSON
+          secret-value: ${{ steps.run_scraper.outputs.refreshed_token }}

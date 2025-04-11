@@ -1,0 +1,24 @@
+name: Manual Token Generation
+
+on:
+  workflow_dispatch:
+
+jobs:
+  auth:
+    runs-on: ubuntu-latest  # use self-hosted if needed for browser-based login
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Auth Script
+        run: python scripts/manual_auth.py
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: secrets/credential.json

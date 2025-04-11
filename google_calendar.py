@@ -11,29 +11,26 @@ TIMEZONE = "America/Los_Angeles"
 CALENDAR_EVENT_PREFIX = "SBP –"  # em dash for pretty titles
 CALENDAR_COLD_PLUNGE_PREFIX = "SBP Cold Plunge –"  # em dash for pretty titles
 credential_file = "/Users/tdavidi/Documents/code/sbp-calendar/secrets/credential.json"
-token_file = "/Users/tdavidi/Documents/code/sbp-calendar/secrets/token.json"
+TOKEN_FILE = "secrets/token.json"
 
 
 def get_calendar_service():
     creds = None
+    if os.path.exists(TOKEN_FILE):
+        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
 
-    # Check if token.json exists
-    if os.path.exists(token_file):
-        creds = Credentials.from_authorized_user_file(token_file, SCOPES)
-
-    # If there are no (valid) credentials, let the user log in
+    refreshed = False
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())  # refresh the token if expired
+            creds.refresh(Request())
+            refreshed = True
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(credential_file, SCOPES)
-            creds = flow.run_local_server(port=0)
+            raise Exception("Token invalid or expired and can't be refreshed.")
 
-        # Save credentials for the next run
-        with open(token_file, "w") as token:
+        with open(TOKEN_FILE, "w") as token:
             token.write(creds.to_json())
 
-    return build("calendar", "v3", credentials=creds)
+    return build("calendar", "v3", credentials=creds), refreshed
 
 
 def get_or_create_calendar(service, location_name, prefix):
