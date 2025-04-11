@@ -13,6 +13,8 @@ CALENDAR_COLD_PLUNGE_PREFIX = "SBP Cold Plunge –"  # em dash for pretty titles
 CREDENTIAL_FILE = "secrets/credential.json"
 TOKEN_FILE = "secrets/token.json"
 
+GITHUB_OUTPUT = os.getenv("GITHUB_OUTPUT")
+
 
 def get_calendar_service():
     creds = None
@@ -30,7 +32,13 @@ def get_calendar_service():
         with open(TOKEN_FILE, "w") as token:
             token.write(creds.to_json())
 
-    return build("calendar", "v3", credentials=creds), refreshed
+    if GITHUB_OUTPUT:
+        with open(GITHUB_OUTPUT, "a") as fh:
+            fh.write(f"refreshed={'true' if refreshed else 'false'}\n")
+            if refreshed:
+                fh.write(f"refreshed_token={creds.to_json()}\n")
+
+    return build("calendar", "v3", credentials=creds)
 
 
 def get_or_create_calendar(service, location_name, prefix):

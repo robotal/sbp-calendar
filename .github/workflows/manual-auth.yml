@@ -24,6 +24,18 @@ jobs:
           echo '${{ secrets.CREDENTIAL_JSON }}' > secrets/credential.json
 
       - name: Run Auth Script
+        id: run_auth
         run: python scripts/manual_auth.py
         env:
           GOOGLE_APPLICATION_CREDENTIALS: secrets/credential.json
+
+      - name: Update TOKEN_JSON secret
+        if: steps.run_auth.outputs.refreshed == 'true'
+        uses: peter-evans/create-or-update-secret@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          secret-name: TOKEN_JSON
+          secret-value: ${{ steps.run_auth.outputs.refreshed_token }}
+
+         
+     

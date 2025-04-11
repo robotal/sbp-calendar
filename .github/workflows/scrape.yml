@@ -30,14 +30,7 @@ jobs:
       - name: Run scraper
         id: run_scraper
         run: |
-          python scripts/scrape.py
-          if grep -q '"refresh_token"' secrets/token.json; then
-            echo "Token refreshed"
-            echo "refreshed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No refresh_token present. Login required."
-            exit 1
-          fi
+          python gym_scraper.py
 
       - name: Update TOKEN_JSON secret
         if: steps.run_scraper.outputs.refreshed == 'true'
