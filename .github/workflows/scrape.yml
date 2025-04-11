@@ -34,8 +34,8 @@ jobs:
 
       - name: Update TOKEN_JSON secret
         if: steps.run_scraper.outputs.refreshed == 'true'
-        uses: peter-evans/create-or-update-secret@v2
+        uses: gliech/create-github-secret-action@v1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          secret-name: TOKEN_JSON
-          secret-value: ${{ steps.run_scraper.outputs.refreshed_token }}
+          pa: ${{ secrets.GITHUB_TOKEN }}
+          name: TOKEN_JSON
+          value: ${{ steps.run_scraper.outputs.refreshed_token }}

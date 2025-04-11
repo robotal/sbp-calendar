@@ -67,9 +67,20 @@ def make_calendar_public(service, calendar_id):
 
 def clear_calendar(service, calendar_id):
     now = datetime.datetime.utcnow().isoformat() + "Z"
-    events = service.events().list(calendarId=calendar_id, timeMin=now).execute()
-    for event in events.get("items", []):
-        service.events().delete(calendarId=calendar_id, eventId=event["id"]).execute()
+    page_token = None
+    while True:
+        events = (
+            service.events()
+            .list(calendarId=calendar_id, pageToken=page_token, timeMin=now)
+            .execute()
+        )
+        for event in events.get("items", []):
+            service.events().delete(
+                calendarId=calendar_id, eventId=event["id"]
+            ).execute()
+        page_token = events.get("nextPageToken")
+        if not page_token:
+            break
 
 
 def upload_events(service, calendar_id, events):
