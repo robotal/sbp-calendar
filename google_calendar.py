@@ -112,12 +112,19 @@ def sync_calendar_events(service, calendar_id, events):
         if not page_token:
             break
 
-    # Events to delete
-    to_delete = set(existing_event_keys) - set(new_event_map)
-    for key in to_delete:
-        service.events().delete(
-            calendarId=calendar_id, eventId=existing_event_keys[key]
-        ).execute()
+    # Events to delete (but skip events that have already started)
+    for key in set(existing_event_keys) - set(new_event_map):
+        event_id = existing_event_keys[key]
+        summary, start_str, _ = key
+        if not start_str:
+            continue  # safety check
+
+        start_dt = datetime.datetime.fromisoformat(start_str)
+        if start_dt < datetime.datetime.now(datetime.timezone.utc):
+            print(f"Skipping deletion of ongoing/past event: {summary} at {start_str}")
+            continue
+        print(f"Deleting event which no longer exists: {summary} at {start_str}")
+        service.events().delete(calendarId=calendar_id, eventId=event_id).execute()
 
     # Events to insert
     to_add = set(new_event_map) - set(existing_event_keys)
